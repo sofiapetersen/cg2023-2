@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trabalho 1 CG</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        #menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100px;
+            height: 100%;
+            background-color: #333;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+        }
+        #webgl-canvas {
+            margin-left: 120px;
+            margin-right: 20px; 
+        }
+        .custom-button {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #555;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: white;
+            text-decoration: none;
+        }
+        .custom-button img {
+            width: 30px;
+            height: 30px;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <a href="#" id="adicionarTileButton" class="custom-button">
+            <img src="tile1.png" alt="Adicionar Tile">
+        </a>
+        <a href="#" id="adicionarArvoreButton" class="custom-button">
+            <img src="arvore1.png" alt="Adicionar Arvore">
+        </a>
+        <a href="#" id="adicionarBolaButton" class="custom-button">
+            <img src="bola1.png" alt="Adicionar Bola">
+        </a>
+        <a href="#" id="adicionarFlagButton" class="custom-button">
+            <img src="flag.png" alt="Adicionar Flag">
+        </a>
+        <a href="#" id="adicionarDiamondButton" class="custom-button">
+            <img src="diamond.png" alt="Adicionar Diamond">
+        </a>
+        <button id="toggleMovementButton" class="custom-button">Movimento</button>
+        <a>
+        <button id="trocarTexturaButton" class="custom-button">Textura</button>
+    </div>
+
+    <div id="object-list" style="position: fixed; top: 0; right: 0; width: 200px; height: 100%; background-color: #333; padding: 20px; box-sizing: border-box; color: white;">
+        <h3 style="margin-bottom: 10px;">Objetos:</h3>
+        <ul id="object-list-ul" style="list-style-type: none; padding: 0;">
+        </ul>
+    </div>
+    
+    
+    <canvas id="webgl-canvas"></canvas>
+
+    <script type="module">
+
+        import * as THREE from 'https://unpkg.com/three@0.126.1/build/three.module.js';
+        import { OrbitControls } from 'https://unpkg.com/three@0.126.1/examples/jsm/controls/OrbitControls.js';
+        import { TransformControls } from 'https://unpkg.com/three@0.126.1/examples/jsm/controls/TransformControls.js';
+        import { OBJLoader } from 'https://unpkg.com/three@0.126.1/examples/jsm/loaders/OBJLoader.js';
+        import { MTLLoader } from 'https://unpkg.com/three@0.126.1/examples/jsm/loaders/MTLLoader.js';
+
+        
+
+        document.addEventListener("DOMContentLoaded", function () {
+            
+            var scene = new THREE.Scene();
+            var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+            var renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("webgl-canvas") });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            var raycaster = new THREE.Raycaster();
+            var mouse = new THREE.Vector2();
+            var objects = [];
+
+
+
+            var ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            var directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            directionalLight.position.set(5, 5, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            var adicionarTileButton = document.getElementById("adicionarTileButton");
+            adicionarTileButton.addEventListener("click", loadTile);
+
+            var adicionarArvoreButton = document.getElementById("adicionarArvoreButton");
+            adicionarArvoreButton.addEventListener("click", loadArvore);
+
+            var adicionarBolaButton = document.getElementById("adicionarBolaButton");
+            adicionarBolaButton.addEventListener("click", loadBola);
+            
+            var adicionarFlagButton = document.getElementById("adicionarFlagButton");
+            adicionarFlagButton.addEventListener("click", loadFlag);
+
+            var adicionarDiamondButton = document.getElementById("adicionarDiamondButton");
+            adicionarDiamondButton.addEventListener("click", loadDiamond);
+
+            var transformControls;
+            var scaleControls;
+
+            function addObjectToList(objeto, objectListElement) {
+                updateObjectList(objectListElement);
+            }
+            
+            
+            
+            function selectObject(objeto) {
+                if (!objeto.selected) {
+                    objects.forEach(function (obj) {
+                        obj.selected = false;
+                    });
+            
+                    objeto.selected = true;
+                    console.log('Objeto selecionado!');
+                    
+                }
+            }
+            
+
+            
+            
+            function updateObjectList() {
+                var objectListUl = document.getElementById("object-list-ul");
+                objectListUl.innerHTML = ''; 
+            
+                objects.forEach(function (objeto, index) {
+                    var objectItem = document.createElement("obj");
+                    objectItem.style.marginBottom = "10px";
+                    objectItem.style.cursor = "pointer";
+                    objectItem.textContent = `${index + 1}. ${objeto.userData.tipo} \n`;
+            
+                    objectItem.addEventListener("click", function () {
+                        selectObject(objeto);
+                    });
+            
+                    objectListUl.appendChild(objectItem);
+                });
+            }
+            
+
+            function toggleTransformations() {
+                for (var i = 0; i < objects.length; i++) {
+                    if (objects[i].selected) {
+                        objects[i].disableTransformations = !objects[i].disableTransformations;
+            
+                        if (objects[i].disableTransformations) {
+                            if (transformControls) {
+                                transformControls.detach(objects[i]);
+                            }
+                            if (scaleControls) {
+                                scaleControls.detach(objects[i]);
+                            }
+                        } else {
+                            if (transformControls) {
+                                adicionarControlesTransformacao(objects[i]);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            
+
+            function objectShadow(objeto) {
+                objeto.castShadow = true;
+                objeto.receiveShadow = true;
+            }
+
+            var toggleMovementButton = document.getElementById("toggleMovementButton");
+            toggleMovementButton.addEventListener("click", toggleMovement);
+
+            function toggleMovement() {
+                objects.forEach(function (obj) {
+                    obj.movimentoAtivo = !obj.movimentoAtivo || false;
+                });
+            }
+            
+
+
+            var controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; 
+            controls.dampingFactor = 0.25; 
+            controls.screenSpacePanning = false;
+            controls.maxPolarAngle = Math.PI / 2; 
+
+
+            function createTransformControls(objeto) {
+                const transformControls = new TransformControls(camera, renderer.domElement);
+                transformControls.attach(objeto);
+                scene.add(transformControls);
+            
+                transformControls.addEventListener('change', function () {
+                    
+                });
+            
+                transformControls.addEventListener('dragging-changed', function (event) {
+                    controls.enabled = !event.value;
+                });
+            
+                return transformControls;
+            }
+            
+            function createScaleControls(objeto) {
+                const scaleControls = new TransformControls(camera, renderer.domElement);
+                scaleControls.mode = 'scale';
+                scaleControls.attach(objeto);
+                scene.add(scaleControls);
+            
+                scaleControls.addEventListener('dragging-changed', function (event) {
+                    controls.enabled = !event.value;
+                });
+            
+                scaleControls.addEventListener('change', function () {
+                    
+                });
+            
+                scaleControls.addEventListener('object-scaled', function (event) {
+                    
+                });
+            
+                return scaleControls;
+            }
+            
+            function addControls(objeto) {
+                transformControls = createTransformControls(objeto);
+                scaleControls = createScaleControls(objeto);
+            }
+
+            
+
+            function addLoadedObject(loadedObject, tipoObjeto) {
+                loadedObject.userData.tipo = tipoObjeto;
+                objectShadow(loadedObject);
+                addControls(loadedObject);
+            
+                objects.push(loadedObject);
+            
+                addObjectToList(loadedObject, document.getElementById("object-list-ul"));
+            }
+            
+            
+            
+            
+            
+
+            function animate() {
+                requestAnimationFrame(animate);
+            
+                raycaster.setFromCamera(mouse, camera);
+            
+                var intersects = raycaster.intersectObjects(objects);
+            
+                if (intersects.length > 0) {
+                    transformControls.attach(intersects[0].object);
+                }
+            
+                for (var i = 0; i < objects.length; i++) {
+                    if (!objects[i].isCharacter && objects[i].movimentoAtivo) {
+                        objects[i].rotation.x += 0.01;
+                        objects[i].rotation.y += 0.01;
+                    }
+                }
+            
+                controls.update();
+            
+                renderer.render(scene, camera);
+            }
+            
+
+            document.addEventListener('mousemove', function (event) {
+                mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            }, false);
+            
+            var transformControls = new TransformControls(camera, renderer.domElement);
+            scene.add(transformControls);
+
+            var animate = function () {
+                requestAnimationFrame(animate);
+            
+                for (var i = 0; i < objects.length; i++) {
+                    if (!objects[i].isCharacter && objects[i].movimentoAtivo) {
+                        objects[i].rotation.x += 0.01;
+                        objects[i].rotation.y += 0.01;
+                    }
+                }
+            
+                controls.update(); 
+            
+                renderer.render(scene, camera);
+            };
+            
+
+            var canvas = document.getElementById("webgl-canvas");
+            canvas.style.marginLeft = "100px";
+
+            window.addEventListener("resize", function () {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth - 100, window.innerHeight);
+            });
+
+            
+
+            function loadBola() {
+                var objLoader = new OBJLoader();
+                var mtlLoader = new MTLLoader();
+            
+                mtlLoader.load('bola.mtl', function (materials) {
+                    materials.preload();
+                    
+                    objLoader.setMaterials(materials);
+                    objLoader.load(
+                        'bola.obj',
+                        function (loadedObject) {
+                            loadedObject.position.set(0, 0, 0);
+                            addLoadedObject(loadedObject, 'bola');
+                            scene.add(loadedObject);
+                        }
+                    );
+                });
+            }
+
+            function loadArvore() {
+                var objLoader = new OBJLoader();
+                var mtlLoader = new MTLLoader();
+            
+                mtlLoader.load('tree_forest.mtl', function (materials) {
+                    materials.preload();
+                    
+                    objLoader.setMaterials(materials);
+                    objLoader.load(
+                        'tree_forest.obj',
+                        function (loadedObject) {
+                            loadedObject.position.set(0, 0, 0);
+                            addLoadedObject(loadedObject, 'tree_forest');
+                            scene.add(loadedObject);
+                        }
+                    );
+                });
+            }
+            
+            
+            function loadTile() {
+                var objLoader = new OBJLoader();
+                var mtlLoader = new MTLLoader();
+            
+                mtlLoader.load('tileMedium_forest.mtl', function (materials) {
+                    materials.preload();
+                    
+                    objLoader.setMaterials(materials);
+                    objLoader.load(
+                        'tileMedium_forest.obj',
+                        function (loadedObject) {
+                            loadedObject.position.set(0, 0, 0);
+                            addLoadedObject(loadedObject, 'tileMedium_forest');
+                            scene.add(loadedObject);
+                        }
+                    );
+                });
+            }
+
+            function loadFlag() {
+                var objLoader = new OBJLoader();
+                var mtlLoader = new MTLLoader();
+            
+                mtlLoader.load('flag.mtl', function (materials) {
+                    materials.preload();
+            
+                    objLoader.setMaterials(materials);
+                    objLoader.load(
+                        'flag.obj',
+                        function (loadedObject) {
+                            loadedObject.position.set(0, 0, 0);
+                            addLoadedObject(loadedObject, 'flag');
+                            scene.add(loadedObject);
+                        }
+                    );
+                });
+            }
+            
+
+            function loadDiamond() {
+                var objLoader = new OBJLoader();
+                var mtlLoader = new MTLLoader();
+            
+                mtlLoader.load('diamond.mtl', function (materials) {
+                    materials.preload();
+                    
+                    objLoader.setMaterials(materials);
+                    objLoader.load(
+                        'diamond.obj',
+                        function (loadedObject) {
+                            loadedObject.position.set(0, 0, 0);
+                            addLoadedObject(loadedObject, 'diamond');
+                            scene.add(loadedObject);
+                        }
+                    );
+                });
+            }
+
+            var trocarTexturaButton = document.getElementById("trocarTexturaButton");
+            trocarTexturaButton.addEventListener("click", trocarTextura);
+
+            function trocarTextura() {
+                var objetoSelecionado = objects.find(obj => obj.selected);
+            
+                for (var i = 0; i < objects.length; i++) {
+                    if (objects[i].selected) {
+                        objetoSelecionado = objects[i];
+                        break;
+                    }
+                }
+            
+                if (objetoSelecionado) {
+                    var tipoObjeto = objetoSelecionado.userData.tipo;
+            
+                    console.log("Tipo de objeto:", tipoObjeto);
+            
+                    var novaTexturaPath = texturePath(tipoObjeto);
+            
+                    console.log("Nova Textura Path:", novaTexturaPath);
+            
+                    var objLoader = new OBJLoader();
+                    var mtlLoader = new MTLLoader();
+            
+                    mtlLoader.load(novaTexturaPath + '.mtl', function (materials) {
+                        materials.preload();
+            
+                        objLoader.setMaterials(materials);
+                        objLoader.load(
+                            novaTexturaPath + '.obj',
+                            function (loadedObject) {
+                                loadedObject.position.copy(objetoSelecionado.position);
+                                loadedObject.rotation.copy(objetoSelecionado.rotation);
+                                loadedObject.scale.copy(objetoSelecionado.scale);
+            
+                               
+                                
+                                
+                                transformControls.detach(objetoSelecionado);
+                                scaleControls.detach(objetoSelecionado);
+                                scene.remove(objetoSelecionado);
+                                scene.add(loadedObject);
+            
+                                objectShadow(loadedObject);
+                                addControls(loadedObject);
+            
+            
+                                console.log("Textura trocada com sucesso!");
+                            }
+                        );
+                    });
+                } else {
+                    console.log("Nenhum objeto selecionado para trocar a textura.");
+                    
+                    objects.forEach((obj, index) => {
+                        console.log(`Objeto ${index + 1}: selected=${obj.selected}`);
+                    });
+                }
+            }
+            
+            
+            
+            
+            function texturePath(tipoObjeto) {
+                switch (tipoObjeto) {
+                    case 'tree_forest':
+                        return 'tree_forest2';
+                    case 'bola':
+                        return 'bola2';
+                    case 'diamond':
+                        return 'diamond2';
+                    case 'flag':
+                        return 'flag2';
+                    case 'tileMedium_forest':
+                        return 'tileMedium_forest2';
+                    case 'tree_forest2':
+                        return 'tree_forest';
+                    case 'bola2':
+                        return 'bola';
+                    case 'diamond2':
+                        return 'diamond';
+                    case 'flag2':
+                        return 'flag';
+                    case 'tileMedium_forest2':
+                        return 'tileMedium_forest'
+                    default:
+                        return 'nao encontrou';
+                }
+            }
+            
+
+            //criarPersonagem();
+            //loadBola();
+
+            animate();
+        });
+    </script>
+</body>
+</html>
